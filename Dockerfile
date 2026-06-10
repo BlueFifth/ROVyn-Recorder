@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM bluerobotics/blueos-base:latest
 
 COPY app /app
 RUN python -m pip install /app --extra-index-url https://www.piwheels.org/simple
