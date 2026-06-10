@@ -21,6 +21,7 @@ jobs:
         with:
           docker-username: ${{ secrets.DOCKER_USERNAME }}
           docker-password: ${{ secrets.DOCKER_PASSWORD }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          image-name: ${{ vars.IMAGE_NAME || 'rovyn-recorder' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}          
+          image-name: 'recorder'
+          image-prefix: 'rovyn-'
           build-platforms: 'linux/arm64/v8'
