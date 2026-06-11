@@ -5,7 +5,7 @@ RUN python -m pip install /app --extra-index-url https://www.piwheels.org/simple
 
 EXPOSE 8000/tcp
 
-LABEL version="0.0.3"
+LABEL version="0.0.1"
 
 ARG IMAGE_NAME
 
