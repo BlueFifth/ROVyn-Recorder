@@ -10,5 +10,6 @@ classifiers = [
 dependencies = [
     "requests",
     "litestar[standard]",
+    "uvloop<0.22",
 ]
 
