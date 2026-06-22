@@ -3,7 +3,7 @@ FROM bluerobotics/blueos-base:latest
 COPY app /app
 RUN python -m pip install /app --extra-index-url https://www.piwheels.org/simple
 
-EXPOSE 8000/tcp
+EXPOSE 80/tcp
 
 LABEL version="0.0.1"
 
@@ -12,13 +12,13 @@ ARG IMAGE_NAME
 LABEL permissions='\
 {\
   "ExposedPorts": {\
-    "8000/tcp": {}\
+    "80/tcp": {}\
   },\
   "HostConfig": {\
     "Binds":["/usr/blueos/extensions/$IMAGE_NAME:/app"],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\
     "PortBindings": {\
-      "8000/tcp": [\
+      "80/tcp": [\
         {\
           "HostPort": ""\
         }\
