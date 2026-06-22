@@ -47,7 +47,7 @@ BUILD_ARGS := \
 CACHE_ARGS := --cache-from type=local,src=$(CACHE_DIR) --cache-to type=local,dest=$(CACHE_DIR)
 
 .DEFAULT_GOAL := help
-.PHONY: help check-username check-credentials qemu builder warm-cache build image login push inspect deploy clean
+.PHONY: help check-username check-credentials qemu builder warm-cache build image load login push inspect deploy clean
 
 help:
 	@echo "Targets:"
@@ -55,6 +55,7 @@ help:
 	@echo "  make qemu         Install QEMU emulation for cross-platform builds"
 	@echo "  make build        Build the image for \$$(PLATFORMS) (no push, not exported)"
 	@echo "  make image        Build for \$$(PLATFORMS) and export as a .tar for sideloading"
+	@echo "  make load         Build for the host platform and load it into the local Docker daemon"
 	@echo "  make login        Log in to Docker Hub (needs DOCKER_USERNAME/DOCKER_PASSWORD)"
 	@echo "  make push         Build and push the image to Docker Hub"
 	@echo "  make inspect      Inspect the pushed manifest"
@@ -104,6 +105,18 @@ image: builder
 		--output "type=docker,dest=$(ARTIFACT_FILE)" \
 		--file '$(CONTEXT)/$(DOCKERFILE)' '$(CONTEXT)'
 	@echo "Wrote $(ARTIFACT_FILE)"
+
+# Build for the host's own architecture and load it straight into the local
+# Docker daemon so it can be run with `docker run` for local testing.
+load: builder
+	docker buildx build \
+		--builder $(BUILDX_BUILDER) \
+		--load \
+		$(BUILD_ARGS) \
+		$(CACHE_ARGS) \
+		--tag $(PREFIXED_IMAGE):$(IMAGE_TAG) \
+		--file '$(CONTEXT)/$(DOCKERFILE)' '$(CONTEXT)'
+	@echo "Loaded $(PREFIXED_IMAGE):$(IMAGE_TAG) - run with: docker run --rm -p 8000:8000 $(PREFIXED_IMAGE):$(IMAGE_TAG)"
 
 login: check-credentials
 	echo "$(DOCKER_PASSWORD)" | docker login --username "$(DOCKER_USERNAME)" --password-stdin
