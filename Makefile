@@ -14,10 +14,10 @@ PLATFORMS         ?= linux/arm/v7
 CONTEXT           ?= .
 DOCKERFILE        ?= Dockerfile
 
-AUTHOR            ?= Author Name
-AUTHOR_EMAIL      ?=
-MAINTAINER        ?= BlueFifth
-MAINTAINER_EMAIL  ?= maintainer.email@example.com
+AUTHOR            ?= Gavin Foster
+AUTHOR_EMAIL      ?= bluefifth@duck.com
+MAINTAINER        ?= Gavin Foster
+MAINTAINER_EMAIL  ?= bluefifth@duck.com
 REPO              ?= BlueFifth/ROVyn-Recorder
 OWNER             ?= BlueFifth
 
