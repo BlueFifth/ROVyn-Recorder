@@ -1,6 +1,8 @@
 # QuickStart-Python-Extension
 
-A quick-start repository for building and uploading a Python-focused BlueOS Extension.
+A quick-start repository for building and uploading a Python-focused BlueOS Extension altered and debugged for easier use.
+
+
 
 ## Intent
 
@@ -15,6 +17,9 @@ This is intended to showcase:
 Forking the repository will try to automatically package and upload your Extension variant to a Docker registry (Docker Hub), using the built in GitHub Action.
 This process makes use of some [GitHub Variables](https://github.com/BlueOS-community/Deploy-BlueOS-Extension#input-variables) that you can configure for your fork.
 
-It is also possible to manually run the Action (via the Actions tab), or to build and deploy the extension manually on your local machine (although this requires installing the relevant build tools and cloning the repository onto your computer).
+The github acttion has been supplimented with a local makefile. With the makefile you can do the same things as   the action, but with far more speed and convinience, as caching works better, and you can just use your local (terminal) docker login instead of using docker token passwords. Scan through the makefile to see the exectution options
 
->💡**Note:** If you are forking this repository as a starting point for creating your own [BlueOS Extension](https://blueos.cloud/docs/blueos/latest/development/extensions), it is recommended to enable `Issues` in your fork (via the `Settings` tab at the top), so that users and co-developers of your Extension can raise problems and make suggestions.
+To install this extension, add it as a custom extension in the BlueOS extension manager, copying the permissions from the dockerfile (lines 14-29), removing line seperators. It'll need to be accessable in a public Dockerhub repo. If ```make deploy``` runs correctly with your config you should be sorted.
+
+Note that you'll need to use your own port. This is reflected in lines 7, 22, and 56 of the DOCKERFILE. If you would like to make your own extension, pick a new port and change these lines to reflect that.
+
