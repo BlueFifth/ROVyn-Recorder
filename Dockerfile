@@ -4,6 +4,7 @@ COPY app /app
 RUN python -m pip install /app --extra-index-url https://www.piwheels.org/simple
 
 EXPOSE 80/tcp
+EXPOSE 9001
 
 LABEL version="0.0.1"
 
@@ -18,7 +19,7 @@ LABEL permissions='\
     "Binds":["/usr/blueos/extensions/$IMAGE_NAME:/app"],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\
     "PortBindings": {\
-      "80/tcp": [\
+      "9001/tcp": [\
         {\
           "HostPort": ""\
         }\
@@ -52,4 +53,4 @@ LABEL links='{\
     }'
 LABEL requirements="core >= 1.1"
 
-ENTRYPOINT litestar run --host 0.0.0.0
+ENTRYPOINT litestar run --host 0.0.0.0 --port 9001
