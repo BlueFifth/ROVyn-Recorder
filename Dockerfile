@@ -1,56 +1,53 @@
 FROM bluerobotics/blueos-base:latest
 
-COPY app /app
-RUN python -m pip install /app --extra-index-url https://www.piwheels.org/simple
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV GST_DEBUG=1
 
-EXPOSE 80/tcp
-EXPOSE 9001
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-gi \
+    python3-gi-cairo \
+    gir1.2-gstreamer-1.0 \
+    gir1.2-gst-rtsp-server-1.0 \
+    gstreamer1.0-tools \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-rtsp \
+    v4l-utils \
+    exfat-fuse \
+    fuse \
+    supervisor \
+    udev \
+    && rm -rf /var/lib/apt/lists/*
 
-LABEL version="0.0.1"
+COPY requirements.txt /requirements.txt
+RUN pip3 install --break-system-packages \
+    --extra-index-url https://www.piwheels.org/simple \
+    -r /requirements.txt
 
-ARG IMAGE_NAME
+COPY supervisord.conf /etc/supervisor/conf.d/stellar-recorder.conf
+COPY app/ /app/
+COPY config/ /config/
 
-LABEL permissions='\
-{\
-  "ExposedPorts": {\
-    "80/tcp": {}\
-  },\
-  "HostConfig": {\
-    # "Binds":["/usr/blueos/extensions/$IMAGE_NAME:/app"],\
-    "ExtraHosts": ["host.docker.internal:host-gateway"],\
-    "PortBindings": {\
-      "9001/tcp": [\
-        {\
-          "HostPort": ""\
-        }\
-      ]\
-    }\
-  }\
-}'
+LABEL authors='[{"name": "Gavin Foster"}]' \
+      company="African Robotics Unit" \
+      description="Arm-triggered YUYV recorder and RTSP streamer for DWE StellarHD stereo cameras" \
+      permissions='{"NetworkMode":"host",\
+      "Privileged":true,\
+      "HostConfig":{\
+                    "Privileged":true,\
+                    "NetworkMode":"host",\
+                    "Binds":[\
+                                "/dev:/dev","/media:/media",\
+                                "/mnt:/mnt","/run/udev:/run/udev:ro"\
+                                ]\
+                    }\
+       }' \
+      type="tool" \
+      tags='["camera","recording", "data-collection"]'
 
-ARG AUTHOR
-ARG AUTHOR_EMAIL
-LABEL authors='[\
-    {\
-        "name": "$AUTHOR",\
-        "email": "$AUTHOR_EMAIL"\
-    }\
-]'
+EXPOSE 7691 8554
 
-ARG MAINTAINER
-ARG MAINTAINER_EMAIL
-LABEL company='{\
-        "about": "",\
-        "name": "$MAINTAINER",\
-        "email": "$MAINTAINER_EMAIL"\
-    }'
-LABEL type="example"
-ARG REPO
-ARG OWNER
-LABEL readme='https://raw.githubusercontent.com/$OWNER/$REPO/{tag}/README.md'
-LABEL links='{\
-        "source": "https://github.com/$OWNER/$REPO"\
-    }'
-LABEL requirements="core >= 1.1"
-
-ENTRYPOINT litestar run --host 0.0.0.0 --port 9001
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]

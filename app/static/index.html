@@ -1,61 +1,748 @@
-<html>
-    <head>
-        <title>QuickStart</title>
-        <script type="text/javascript" after defer>
-            // setup
-            function window_url() {
-                return window.location.protocol + '//' + window.location.hostname;
-            };
-            async function frontend_perm_load() {
-                var response = await fetch(window_url() + "/bag/v1.0/get/quickstart_frontend_perm_count");
-                if (response.status === 400) {
-                    return 0; // count not already stored, start from 0/unclicked
-                }
-                return (await response.json())["value"];
-            };
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StellarHD Recorder</title>
+<style>
+  /* offline-safe system font stack — no external requests */
 
-            // callbacks
-            var frontend_count = 0;
-            function frontend_temp_click() {
-                frontend_count += 1;
-                document.getElementById("frontend_temp").textContent = frontend_count;
-            };
-            async function frontend_perm_click() {
-                var count = await frontend_perm_load();
-                count += 1;
-                fetch(window_url() + "/bag/v1.0/set/quickstart_frontend_perm_count", {
-                    method: "post",
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        value: count
-                    })
-                });
-                document.getElementById("frontend_perm").textContent = count;
-            };
-            async function backend_temp_click() {
-                document.getElementById("backend_temp").textContent = (await (await fetch("/temp_count")).json())["value"];
-            };
-            async function backend_perm_click() {
-                document.getElementById("backend_perm").textContent = (await (await fetch("/persistent_count")).json())["value"];
-            };
+  :root {
+    --bg:        #0d0f11;
+    --panel:     #13171c;
+    --border:    #1f2830;
+    --accent:    #00d4ff;
+    --armed:     #00ff88;
+    --warn:      #ffaa00;
+    --danger:    #ff3355;
+    --text:      #c8d8e8;
+    --muted:     #4a6070;
+    --mono:      'Consolas', 'Monaco', 'Lucida Console', monospace;
+    --cond:      'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+  }
 
-            // load frontend-triggered persistent state
-            document.getElementById("frontend_perm").textContent = frontend_perm_load();
-            // don't load backend-triggered persistent state, because doing so counts as a click
-        </script>
-    </head>
-    <body>
-        <h1>Quick Start Functionalities</h1>
-        <button type="button" onclick="frontend_temp_click()">Frontend Temporary</button>
-        <p>Clicks: <a id="frontend_temp">0</a></p>
-        <button type="button" onclick="frontend_perm_click()">Frontend Persistent</button>
-        <p>Clicks: <a id="frontend_perm">?</a></p>
-        <button type="button" onclick="backend_temp_click()">Backend Temporary</button>
-        <p>Clicks: <a id="backend_temp">0</a></p>
-        <button type="button" onclick="backend_perm_click()">Backend Persistent</button>
-        <p>Clicks: <a id="backend_perm">?</a></p>
-    </body>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  /* scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px;
+  }
+
+  header h1 {
+    font-family: var(--cond);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  header .subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 16px;
+  }
+
+  .panel-label {
+    font-family: var(--cond);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* State banner */
+  .state-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .state-banner.recording {
+    border-color: var(--armed);
+    box-shadow: 0 0 20px rgba(0,255,136,0.08);
+  }
+
+  .state-banner.recording::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--armed);
+    animation: pulse-bar 1s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse-bar {
+    from { opacity: 0.4; }
+    to   { opacity: 1.0; }
+  }
+
+  .state-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .state-dot.recording {
+    background: var(--armed);
+    box-shadow: 0 0 8px var(--armed);
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  .state-label {
+    font-family: var(--cond);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .state-label.recording { color: var(--armed); }
+  .state-label.idle      { color: var(--muted); }
+
+  .state-meta {
+    margin-left: auto;
+    text-align: right;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .state-meta .elapsed {
+    font-family: var(--cond);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.05em;
+    display: block;
+  }
+
+  .state-meta .elapsed.recording { color: var(--armed); }
+
+  /* Camera panels */
+  .cam-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .cam-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--danger);
+    flex-shrink: 0;
+  }
+
+  .cam-indicator.ok       { background: var(--armed); }
+  .cam-indicator.streaming { background: var(--accent); }
+
+  .cam-name {
+    font-family: var(--cond);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    flex: 1;
+  }
+
+  .cam-frames {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .cam-frames span { color: var(--text); }
+
+  .cam-device {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .snapshot-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 4px 10px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .snapshot-btn:hover {
+    border-color: var(--accent);
+    background: rgba(0,212,255,0.06);
+  }
+
+  /* Snapshot modal */
+  .snapshot-area {
+    margin-top: 10px;
+    display: none;
+    border: 1px solid var(--border);
+    background: #000;
+    text-align: center;
+    position: relative;
+  }
+
+  .snapshot-area.visible { display: block; }
+
+  .snapshot-area img {
+    max-width: 100%;
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  .snapshot-ts {
+    font-size: 10px;
+    color: var(--muted);
+    padding: 4px 8px;
+    text-align: right;
+  }
+
+  /* Metrics */
+  .metric {
+    margin-bottom: 14px;
+  }
+
+  .metric-label {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+
+  .metric-value {
+    font-family: var(--cond);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.03em;
+  }
+
+  .metric-unit {
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: 3px;
+  }
+
+  /* RTSP URLs */
+  .rtsp-url {
+    font-size: 11px;
+    color: var(--accent);
+    word-break: break-all;
+    margin-top: 4px;
+    opacity: 0.7;
+  }
+
+  /* Control buttons */
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .btn {
+    font-family: var(--cond);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: none;
+    padding: 12px 28px;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    flex: 1;
+  }
+
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .btn-start {
+    background: var(--armed);
+    color: #000;
+  }
+
+  .btn-stop {
+    background: var(--danger);
+    color: #fff;
+  }
+
+  /* SSD bar */
+  .ssd-bar-track {
+    height: 4px;
+    background: var(--border);
+    margin-top: 8px;
+    position: relative;
+  }
+
+  .ssd-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.5s;
+  }
+
+  .ssd-bar-fill.warn  { background: var(--warn); }
+  .ssd-bar-fill.crit  { background: var(--danger); }
+
+  /* Session table */
+  .session-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .session-table th {
+    font-family: var(--cond);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .session-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(31,40,48,0.5);
+    vertical-align: middle;
+  }
+
+  .session-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .del-btn {
+    background: transparent;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+
+  .del-btn:hover { opacity: 1; }
+
+  .empty-msg {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 16px 0;
+    text-align: center;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 9px;
+    font-family: var(--cond);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+  }
+
+  .badge-mavlink { color: var(--accent); }
+  .badge-manual  { color: var(--warn); }
+
+  .no-ssd {
+    color: var(--danger);
+    font-size: 11px;
+    padding: 4px 0;
+  }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .grid, .grid-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>StellarHD Recorder</h1>
+  <span class="subtitle">BlueROV2 · DWE StellarHD · YUYV 320×240 @ 15fps</span>
+</header>
+
+<!-- State Banner -->
+<div class="state-banner" id="stateBanner">
+  <div class="state-dot" id="stateDot"></div>
+  <div>
+    <div class="state-label" id="stateLabel">IDLE</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px" id="sessionMeta">—</div>
+  </div>
+  <div class="state-meta">
+    <span class="elapsed" id="elapsed">00:00:00</span>
+    <span id="triggerBadge"></span>
+  </div>
+</div>
+
+<!-- Controls -->
+<div class="btn-row">
+  <button class="btn btn-start" id="btnStart" onclick="startRecording()">▶ Start Recording</button>
+  <button class="btn btn-stop"  id="btnStop"  onclick="stopRecording()" disabled>■ Stop Recording</button>
+</div>
+
+<!-- Cameras + Storage -->
+<div class="grid">
+
+  <!-- Cameras -->
+  <div class="panel">
+    <div class="panel-label">Cameras</div>
+
+    <div id="cam0Panel">
+      <div class="cam-row">
+        <div class="cam-indicator" id="cam0Dot"></div>
+        <div>
+          <div class="cam-name" id="cam0Name">StellarHD Port</div>
+          <div class="cam-device" id="cam0Device">detecting…</div>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <div class="cam-frames">frames: <span id="cam0Frames">0</span></div>
+          <button class="snapshot-btn" onclick="fetchSnapshot('cam0')">SNAP</button>
+        </div>
+      </div>
+      <div class="snapshot-area" id="snap0">
+        <img id="snap0Img" src="" alt="snapshot">
+        <div class="snapshot-ts" id="snap0Ts"></div>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);margin:12px 0"></div>
+
+    <div id="cam1Panel">
+      <div class="cam-row">
+        <div class="cam-indicator" id="cam1Dot"></div>
+        <div>
+          <div class="cam-name" id="cam1Name">StellarHD Starboard</div>
+          <div class="cam-device" id="cam1Device">detecting…</div>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <div class="cam-frames">frames: <span id="cam1Frames">0</span></div>
+          <button class="snapshot-btn" onclick="fetchSnapshot('cam1')">SNAP</button>
+        </div>
+      </div>
+      <div class="snapshot-area" id="snap1">
+        <img id="snap1Img" src="" alt="snapshot">
+        <div class="snapshot-ts" id="snap1Ts"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Storage + RTSP -->
+  <div>
+    <div class="panel" style="margin-bottom:12px">
+      <div class="panel-label">Storage · External SSD</div>
+      <div id="ssdStatus">
+        <div class="metric">
+          <div class="metric-label">Free Space</div>
+          <div class="metric-value" id="ssdFree">—<span class="metric-unit">GB</span></div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Est. Recording Time</div>
+          <div class="metric-value" id="ssdTime">—<span class="metric-unit">min</span></div>
+        </div>
+        <div class="ssd-bar-track">
+          <div class="ssd-bar-fill" id="ssdBar" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="no-ssd" id="noSsd" style="display:none">⚠ SSD not mounted — recording unavailable</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">RTSP Streams</div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:11px;color:var(--muted)">Port camera</div>
+        <div class="rtsp-url" id="rtspCam0">—</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted)">Starboard camera</div>
+        <div class="rtsp-url" id="rtspCam1">—</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Sessions -->
+<div class="panel">
+  <div class="panel-label">Recorded Sessions</div>
+  <div id="sessionList"><div class="empty-msg">No sessions yet</div></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let _state = 'idle';
+let _elapsedS = 0;
+let _elapsedTimer = null;
+const SSD_TOTAL_GB = 1800; // approximate, for bar display
+
+// ---------------------------------------------------------------------------
+// Polling
+// ---------------------------------------------------------------------------
+async function poll() {
+  try {
+    const r = await fetch('/status');
+    const d = await r.json();
+    updateStatus(d);
+  } catch(e) {
+    console.warn('Status poll failed:', e);
+  }
+}
+
+async function pollSessions() {
+  try {
+    const r = await fetch('/sessions');
+    const d = await r.json();
+    renderSessions(d);
+  } catch(e) {}
+}
+
+setInterval(poll, 1000);
+setInterval(pollSessions, 5000);
+poll();
+pollSessions();
+
+// ---------------------------------------------------------------------------
+// Status update
+// ---------------------------------------------------------------------------
+function updateStatus(d) {
+  const recording = d.state === 'recording';
+  _state = d.state;
+
+  // Banner
+  const banner = document.getElementById('stateBanner');
+  const dot    = document.getElementById('stateDot');
+  const label  = document.getElementById('stateLabel');
+  const meta   = document.getElementById('sessionMeta');
+  const elEl   = document.getElementById('elapsed');
+  const badge  = document.getElementById('triggerBadge');
+
+  banner.className = 'state-banner' + (recording ? ' recording' : '');
+  dot.className    = 'state-dot'    + (recording ? ' recording' : '');
+  label.className  = 'state-label'  + (recording ? ' recording' : ' idle');
+  label.textContent = recording ? 'RECORDING' : 'IDLE';
+  elEl.className   = 'elapsed'      + (recording ? ' recording' : '');
+
+  if (recording) {
+    meta.textContent = d.session_id || '—';
+    _elapsedS = d.duration_s || 0;
+    if (!_elapsedTimer) {
+      _elapsedTimer = setInterval(() => { _elapsedS += 1; elEl.textContent = formatTime(_elapsedS); }, 1000);
+    }
+    badge.innerHTML = `<span class="badge badge-${d.trigger}">${d.trigger}</span>`;
+  } else {
+    meta.textContent = '—';
+    elEl.textContent = '00:00:00';
+    if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+    badge.innerHTML = '';
+  }
+
+  // Buttons
+  document.getElementById('btnStart').disabled = recording;
+  document.getElementById('btnStop').disabled  = !recording;
+
+  // Cameras
+  updateCam('cam0', d.cameras?.cam0);
+  updateCam('cam1', d.cameras?.cam1);
+
+  // RTSP
+  if (d.rtsp) {
+    document.getElementById('rtspCam0').textContent = d.rtsp.cam0 || '—';
+    document.getElementById('rtspCam1').textContent = d.rtsp.cam1 || '—';
+  }
+
+  // SSD
+  const ssdMounted = d.ssd_mounted;
+  document.getElementById('ssdStatus').style.display = ssdMounted ? '' : 'none';
+  document.getElementById('noSsd').style.display     = ssdMounted ? 'none' : '';
+  if (ssdMounted) {
+    document.getElementById('ssdFree').innerHTML = `${d.ssd_free_gb.toFixed(1)}<span class="metric-unit">GB</span>`;
+    document.getElementById('ssdTime').innerHTML = `${d.estimated_minutes_remaining.toFixed(0)}<span class="metric-unit">min</span>`;
+    const pct = Math.min(100, (d.ssd_free_gb / SSD_TOTAL_GB) * 100);
+    const bar = document.getElementById('ssdBar');
+    bar.style.width = pct + '%';
+    bar.className = 'ssd-bar-fill' + (pct < 10 ? ' crit' : pct < 25 ? ' warn' : '');
+  }
+}
+
+function updateCam(id, cam) {
+  if (!cam) return;
+  const dot    = document.getElementById(id + 'Dot');
+  const device = document.getElementById(id + 'Device');
+  const frames = document.getElementById(id + 'Frames');
+
+  if (!cam.found) {
+    dot.className = 'cam-indicator';
+    device.textContent = 'not detected';
+  } else if (cam.streaming) {
+    dot.className = 'cam-indicator streaming';
+    device.textContent = cam.device;
+  } else {
+    dot.className = 'cam-indicator ok';
+    device.textContent = cam.device;
+  }
+  frames.textContent = cam.frames ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+async function startRecording() {
+  try {
+    const r = await fetch('/record/start', { method: 'POST' });
+    if (!r.ok) {
+      const e = await r.json();
+      alert('Start failed: ' + (e.detail || r.status));
+    }
+  } catch(e) { alert('Request failed: ' + e); }
+  poll();
+}
+
+async function stopRecording() {
+  try {
+    await fetch('/record/stop', { method: 'POST' });
+  } catch(e) {}
+  poll();
+  pollSessions();
+}
+
+// ---------------------------------------------------------------------------
+// Snapshots
+// ---------------------------------------------------------------------------
+async function fetchSnapshot(camId) {
+  const idx   = camId === 'cam0' ? '0' : '1';
+  const area  = document.getElementById('snap' + idx);
+  const img   = document.getElementById('snap' + idx + 'Img');
+  const ts    = document.getElementById('snap' + idx + 'Ts');
+  try {
+    const r = await fetch('/snapshot/' + camId, { cache: 'no-store' });
+    if (!r.ok) { alert('Snapshot unavailable — camera may not have frames yet'); return; }
+    const blob = await r.blob();
+    img.src = URL.createObjectURL(blob);
+    ts.textContent = new Date().toISOString();
+    area.classList.add('visible');
+  } catch(e) { alert('Snapshot request failed: ' + e); }
+}
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+function renderSessions(sessions) {
+  const el = document.getElementById('sessionList');
+  if (!sessions || sessions.length === 0) {
+    el.innerHTML = '<div class="empty-msg">No sessions yet</div>';
+    return;
+  }
+  let html = '<table class="session-table"><thead><tr>'
+    + '<th>Session ID</th><th>Duration</th><th>Size</th><th>Trigger</th><th></th>'
+    + '</tr></thead><tbody>';
+  for (const s of sessions) {
+    const dur   = s.duration_s != null ? formatTime(s.duration_s) : '—';
+    const size  = s.total_size_mb != null ? s.total_size_mb.toFixed(0) + ' MB' : '—';
+    const trig  = s.trigger ? `<span class="badge badge-${s.trigger}">${s.trigger}</span>` : '—';
+    html += `<tr>
+      <td style="font-family:var(--mono);font-size:11px">${s.session_id}</td>
+      <td>${dur}</td>
+      <td>${size}</td>
+      <td>${trig}</td>
+      <td><button class="del-btn" onclick="deleteSession('${s.session_id}')">DEL</button></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+async function deleteSession(id) {
+  if (!confirm(`Delete session ${id}?`)) return;
+  try {
+    const r = await fetch('/sessions/' + id, { method: 'DELETE' });
+    if (!r.ok) { alert('Delete failed'); return; }
+  } catch(e) {}
+  pollSessions();
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function formatTime(s) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  return [h, m, sec].map(v => String(v).padStart(2, '0')).join(':');
+}
+</script>
+</body>
 </html>

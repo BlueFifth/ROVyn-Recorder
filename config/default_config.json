@@ -1,0 +1,17 @@
+{
+  "cam0_device": "/dev/video4",
+  "cam0_name": "StellarHD Port",
+  "cam1_device": "/dev/video6",
+  "cam1_name": "StellarHD Starboard",
+  "width": 320,
+  "height": 240,
+  "framerate": 15,
+  "gst_format": "YUY2",
+  "stream_jpeg_quality": 60,
+  "rtsp_port": 8554,
+  "rtsp_cam0_udp_port": 5600,
+  "rtsp_cam1_udp_port": 5601,
+  "mavlink_port": 14550,
+  "api_port": 7691,
+  "pi_ip": "192.168.2.2"
+}

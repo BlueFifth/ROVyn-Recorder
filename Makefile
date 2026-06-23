@@ -8,7 +8,7 @@ DOCKER_PASSWORD   ?=
 
 IMAGE_PREFIX      ?= rovyn-
 IMAGE_NAME        ?= recorder
-IMAGE_TAG         ?= latest
+IMAGE_TAG         ?= vibe
 PLATFORMS         ?= linux/arm/v7
 
 CONTEXT           ?= .

@@ -1,0 +1,30 @@
+{
+  "name": "ROVyn Recorder",
+  "description": "Arm-triggered YUYV recorder and RTSP streamer for DWE StellarHD stereo cameras",
+  "icon": "mdi-video",
+  "company": "African Robotics Unit",
+  "author": "Gavin Foster",
+  "repository": "https://github.com/BlueFifth/ROVyn-recorder",
+  "version": "0.1.0",
+  "new_page": false,
+  "tags": ["camera", "recording"],
+  "ports": [
+    {"port": 7691, "protocol": "http"},
+    {"port": 8554, "protocol": "rtsp"}
+  ],
+  "docker": "bluefifth/rovyn-recorder:0.1.0",
+  "permissions": {
+    "NetworkMode": "host",
+    "Privileged": true,
+    "HostConfig": {
+      "Privileged": true,
+      "NetworkMode": "host",
+      "Binds": [
+        "/dev:/dev",
+        "/media:/media",
+        "/mnt:/mnt",
+        "/run/udev:/run/udev:ro"
+      ]
+    }
+  }
+}

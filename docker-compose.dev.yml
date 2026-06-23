@@ -1,0 +1,14 @@
+services:
+  stellar-recorder:
+    build: .
+    network_mode: host
+    privileged: true
+    volumes:
+      - ./app:/app
+      - ./config:/config
+      - ./tests:/tests
+      - /dev:/dev
+      - /tmp/ssd-sim:/media/ssd-sim
+    environment:
+      - PYTHONUNBUFFERED=1
+      - GST_DEBUG=2
