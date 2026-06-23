@@ -38,7 +38,7 @@ class RTSPServer:
         factory = GstRtspServer.RTSPMediaFactory()
         pipeline_str = (
             f"( udpsrc port={udp_port} caps=\"application/x-rtp,encoding-name=JPEG,payload=26\" "
-            f"! rtpjpegdepay ! jpegenc ! rtpjpegpay name=pay0 pt=26 )"
+            f"! rtpjpegdepay ! rtpjpegpay name=pay0 pt=26 )"
         )
         factory.set_launch(pipeline_str)
         factory.set_shared(True)  # One pipeline serves all connected clients

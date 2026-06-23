@@ -1,12 +1,10 @@
-FROM bluerobotics/blueos-base:latest
+FROM python:3.11-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV GST_DEBUG=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
     python3-gi \
     python3-gi-cairo \
     gir1.2-gstreamer-1.0 \
@@ -28,6 +26,7 @@ RUN pip3 install --break-system-packages \
     -r /requirements.txt
 
 COPY supervisord.conf /etc/supervisor/conf.d/stellar-recorder.conf
+COPY supervisord_main.conf /etc/supervisord.conf
 COPY app/ /app/
 COPY config/ /config/
 
