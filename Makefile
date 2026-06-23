@@ -3,7 +3,7 @@
 # Mirrors that action's build/push logic so the same image can be built
 # and pushed to Docker Hub from a local machine.
 
-DOCKER_USERNAME   ?=
+DOCKER_USERNAME   ?= bluefifth
 DOCKER_PASSWORD   ?=
 
 IMAGE_PREFIX      ?= rovyn-
@@ -47,7 +47,7 @@ BUILD_ARGS := \
 CACHE_ARGS := --cache-from type=local,src=$(CACHE_DIR) --cache-to type=local,dest=$(CACHE_DIR)
 
 .DEFAULT_GOAL := help
-.PHONY: help check-username check-credentials qemu builder warm-cache build image load login push inspect deploy clean
+.PHONY: help check-username qemu builder warm-cache build image load login push inspect deploy clean
 
 help:
 	@echo "Targets:"
@@ -56,20 +56,18 @@ help:
 	@echo "  make build        Build the image for \$$(PLATFORMS) (no push, not exported)"
 	@echo "  make image        Build for \$$(PLATFORMS) and export as a .tar for sideloading"
 	@echo "  make load         Build for the host platform and load it into the local Docker daemon"
-	@echo "  make login        Log in to Docker Hub (needs DOCKER_USERNAME/DOCKER_PASSWORD)"
-	@echo "  make push         Build and push the image to Docker Hub"
+	@echo "  make login        Log in to Docker Hub (only needed if not already logged in)"
+	@echo "  make push         Build and push the image to Docker Hub (assumes you're already logged in)"
 	@echo "  make inspect      Inspect the pushed manifest"
-	@echo "  make deploy       Full pipeline: builder, qemu, build, login, push, inspect"
+	@echo "  make deploy       Full pipeline: builder, qemu, build, push, inspect (assumes you're already logged in)"
 	@echo "  make clean        Remove the buildx builder and local layer cache"
 	@echo ""
 	@echo "Override variables as needed, e.g.:"
-	@echo "  make deploy DOCKER_USERNAME=me DOCKER_PASSWORD=*** IMAGE_TAG=1.2.3"
+	@echo "  make deploy DOCKER_USERNAME=me IMAGE_TAG=1.2.3   # prompts for password"
+	@echo "  export DOCKER_PASSWORD=*** ; make deploy DOCKER_USERNAME=me   # non-interactive"
 
 check-username:
 	@[ -n "$(DOCKER_USERNAME)" ] || { echo "Error: DOCKER_USERNAME is not set" >&2; exit 1; }
-
-check-credentials: check-username
-	@[ -n "$(DOCKER_PASSWORD)" ] || { echo "Error: DOCKER_PASSWORD is not set" >&2; exit 1; }
 
 qemu:
 	docker run --rm --privileged tonistiigi/binfmt:qemu-v7.0.0-28 --install all
@@ -118,10 +116,23 @@ load: builder
 		--file '$(CONTEXT)/$(DOCKERFILE)' '$(CONTEXT)'
 	@echo "Loaded $(PREFIXED_IMAGE):$(IMAGE_TAG) - run with: docker run --rm -p 8000:8000 $(PREFIXED_IMAGE):$(IMAGE_TAG)"
 
-login: check-credentials
-	echo "$(DOCKER_PASSWORD)" | docker login --username "$(DOCKER_USERNAME)" --password-stdin
+# If DOCKER_PASSWORD is exported in the environment, it's piped to
+# `docker login` via a shell variable ($$DOCKER_PASSWORD), never substituted
+# into the command line by Make, so it can't leak through `ps` or Make's
+# command echo. If it's not set, Docker prompts for it interactively
+# instead (the most secure option for local/manual use).
+login: check-username
+	@if [ -n "$$DOCKER_PASSWORD" ]; then \
+		echo "$$DOCKER_PASSWORD" | docker login --username "$(DOCKER_USERNAME)" --password-stdin; \
+	else \
+		docker login --username "$(DOCKER_USERNAME)"; \
+	fi
 
-push: builder login
+# Doesn't depend on `login` - if you've already authenticated with
+# `docker login` in your own shell, Docker reuses those cached credentials
+# from ~/.docker/config.json automatically. Run `make login` first only if
+# you haven't already signed in to Docker Hub.
+push: builder check-username
 	docker buildx build \
 		--builder $(BUILDX_BUILDER) \
 		--output "type=image,push=true" \
