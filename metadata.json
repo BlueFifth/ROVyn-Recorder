@@ -10,7 +10,7 @@
   "tags": ["camera", "recording"],
   "ports": [
     {"port": 7691, "protocol": "http"},
-    {"port": 8554, "protocol": "rtsp"}
+    {"port": 8555, "protocol": "rtsp"}
   ],
   "docker": "bluefifth/rovyn-recorder:0.1.0",
   "permissions": {

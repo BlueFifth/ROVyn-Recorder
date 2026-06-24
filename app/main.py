@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import os
-import signal
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -106,16 +105,12 @@ async def lifespan(app: FastAPI):
         watch_arm_state(handle_arm, handle_disarm, port=config["mavlink_port"])
     )
 
-    # 6. SIGTERM handler for graceful shutdown
-    def on_sigterm(*_):
-        log.info("SIGTERM received — shutting down")
-        if session_manager.state == State.RECORDING:
-            camera_manager.stop_recording()
-            session_manager.stop()
-        camera_manager.stop_all()
-        rtsp_server.stop()
-
-    signal.signal(signal.SIGTERM, on_sigterm)
+    # NOTE: we deliberately do NOT install a custom SIGTERM handler here.
+    # Doing so replaces uvicorn's own handler, so uvicorn never shuts down and
+    # the process hangs until supervisord SIGKILLs it — which can interrupt
+    # pipeline teardown and leave the V4L2 device locked. Instead, teardown
+    # runs in the lifespan shutdown block below, which uvicorn invokes on
+    # SIGTERM (bounded by timeout_graceful_shutdown set in uvicorn.run).
 
     yield
 
@@ -263,4 +258,10 @@ def index():
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=config["api_port"], log_level="info")
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=config["api_port"],
+        log_level="info",
+        timeout_graceful_shutdown=10,  # bound shutdown so teardown always runs before supervisord SIGKILL
+    )
