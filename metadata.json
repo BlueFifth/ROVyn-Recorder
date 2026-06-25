@@ -21,7 +21,7 @@
       "NetworkMode": "host",
       "Binds": [
         "/dev:/dev",
-        "/media:/media",
+        "/media:/media:rshared",
         "/mnt:/mnt",
         "/run/udev:/run/udev:ro"
       ]
