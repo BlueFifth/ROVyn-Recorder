@@ -80,9 +80,10 @@ class CameraPipeline:
             # branch 1: stream (always on)
             f"t. ! queue leaky=downstream "
             f"   ! videorate ! video/x-raw,framerate={self.stream_fps}/1 "
-            f"   ! videoconvert ! video/x-raw,format=I420 "
-            f"   ! x264enc tune=zerolatency bitrate={self.bitrate} "
-            f"          speed-preset=veryfast key-int-max=10 "
+            f"   ! videoconvert ! video/x-raw,format=NV12 "
+            f"   ! v4l2h264enc "
+            f"   ! video/x-h264,level=(string)4,profile=(string)baseline "
+            f"   ! h264parse config-interval=1 "
             f"   ! rtph264pay config-interval=1 pt=96 "
             f"   ! udpsink host=127.0.0.1 port={self.udp_port} sync=false "
             # branch 2: per-frame timestamp appsink (always on)
