@@ -421,6 +421,25 @@
     padding: 4px 0;
   }
 
+  .res-select {
+    width: 100%;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+
+  .res-select:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .res-note {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
   /* Responsive */
   @media (max-width: 700px) {
     .grid, .grid-3 { grid-template-columns: 1fr; }
@@ -431,7 +450,7 @@
 
 <header>
   <h1>StellarHD Recorder</h1>
-  <span class="subtitle">BlueROV2 · DWE StellarHD · YUYV 320×240 @ 15fps</span>
+  <span class="subtitle">BlueROV2 · DWE StellarHD · YUYV <span id="resSubtitle">320×240 @ 15fps</span></span>
 </header>
 
 <!-- State Banner -->
@@ -502,6 +521,18 @@
   <!-- Storage + RTSP -->
   <div>
     <div class="panel" style="margin-bottom:12px">
+      <div class="panel-label">Camera Capture Resolution</div>
+      <select class="res-select" id="resSelect" onchange="applyResolution()"></select>
+      <div class="res-note">Sets recording &amp; capture fps. Restarts the camera stream — unavailable while recording.</div>
+
+      <div style="margin-top:12px">
+        <div class="panel-label">Stream Framerate</div>
+        <select class="res-select" id="streamFpsSelect" onchange="applyStreamFps()"></select>
+        <div class="res-note">Encode/stream fps only — recording always uses the capture fps above.</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:12px">
       <div class="panel-label">Storage · External SSD</div>
       <div id="ssdStatus">
         <div class="metric">
@@ -520,7 +551,10 @@
     </div>
 
     <div class="panel">
-      <div class="panel-label">RTSP Streams</div>
+      <div class="panel-label" style="display:flex;align-items:center;justify-content:space-between">
+        <span>RTSP Streams</span>
+        <button class="snapshot-btn" id="btnRefreshStream" onclick="restartStream()">↻ Refresh Stream</button>
+      </div>
       <div style="margin-bottom:8px">
         <div style="font-size:11px;color:var(--muted)">Port camera</div>
         <div class="rtsp-url" id="rtspCam0">—</div>
@@ -574,6 +608,7 @@ setInterval(poll, 1000);
 setInterval(pollSessions, 5000);
 poll();
 pollSessions();
+loadResolutions();
 
 // ---------------------------------------------------------------------------
 // Status update
@@ -613,6 +648,14 @@ function updateStatus(d) {
   // Buttons
   document.getElementById('btnStart').disabled = recording;
   document.getElementById('btnStop').disabled  = !recording;
+
+  // Resolution / stream-fps / refresh controls — locked while recording
+  const resSel = document.getElementById('resSelect');
+  if (resSel && !resSel.dataset.busy) resSel.disabled = recording;
+  const fpsSel = document.getElementById('streamFpsSelect');
+  if (fpsSel && !fpsSel.dataset.busy) fpsSel.disabled = recording;
+  const refreshBtn = document.getElementById('btnRefreshStream');
+  if (refreshBtn && !refreshBtn.dataset.busy) refreshBtn.disabled = recording;
 
   // Cameras
   updateCam('cam0', d.cameras?.cam0);
@@ -677,6 +720,125 @@ async function stopRecording() {
   } catch(e) {}
   poll();
   pollSessions();
+}
+
+// ---------------------------------------------------------------------------
+// Resolution / framerate
+//
+// Capture (recording) fps and stream (encode) fps are independent — the
+// stream fps dropdown only throttles the `videorate` element feeding the
+// RTSP encoder; recording always taps the camera at the full capture fps.
+// ---------------------------------------------------------------------------
+let _resolutions = [];
+let _streamFpsOptions = [];
+
+async function loadResolutions() {
+  try {
+    const [resR, fpsR, cfgR] = await Promise.all([
+      fetch('/resolutions'), fetch('/stream-fps-options'), fetch('/config')
+    ]);
+    _resolutions = await resR.json();
+    _streamFpsOptions = await fpsR.json();
+    const cfg = await cfgR.json();
+
+    const sel = document.getElementById('resSelect');
+    sel.innerHTML = _resolutions.map((p, i) => `<option value="${i}">${p.label}</option>`).join('');
+    const idx = _resolutions.findIndex(p =>
+      p.width === cfg.width && p.height === cfg.height && p.framerate === cfg.framerate);
+    if (idx >= 0) sel.value = idx;
+
+    populateStreamFpsSelect(cfg.framerate, cfg.stream_fps);
+    setResSubtitle(cfg.width, cfg.height, cfg.framerate, cfg.stream_fps);
+  } catch(e) { console.warn('Failed to load resolution/fps settings:', e); }
+}
+
+function populateStreamFpsSelect(captureFps, currentStreamFps) {
+  const sel = document.getElementById('streamFpsSelect');
+  const allowed = _streamFpsOptions.filter(f => f <= captureFps);
+  sel.innerHTML = allowed.map(f => `<option value="${f}">${f} fps</option>`).join('');
+  if (allowed.includes(currentStreamFps)) sel.value = currentStreamFps;
+}
+
+async function applyResolution() {
+  const sel = document.getElementById('resSelect');
+  const preset = _resolutions[sel.value];
+  if (!preset) return;
+
+  sel.dataset.busy = '1';
+  sel.disabled = true;
+  try {
+    const r = await fetch('/resolution', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(preset)
+    });
+    if (!r.ok) {
+      const e = await r.json();
+      alert('Resolution change failed: ' + (e.detail || r.status));
+    } else {
+      const d = await r.json();
+      // resolution change may have clamped stream fps down — refresh both
+      populateStreamFpsSelect(d.framerate, d.stream_fps);
+      setResSubtitle(d.width, d.height, d.framerate, d.stream_fps);
+    }
+  } catch(e) {
+    alert('Request failed: ' + e);
+  }
+  delete sel.dataset.busy;
+  sel.disabled = (_state === 'recording');
+}
+
+async function applyStreamFps() {
+  const sel = document.getElementById('streamFpsSelect');
+  const fps = parseFloat(sel.value);
+  if (!fps) return;
+
+  sel.dataset.busy = '1';
+  sel.disabled = true;
+  try {
+    const r = await fetch('/stream-fps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stream_fps: fps })
+    });
+    if (!r.ok) {
+      const e = await r.json();
+      alert('Stream fps change failed: ' + (e.detail || r.status));
+    } else {
+      const resSel = document.getElementById('resSelect');
+      const preset = _resolutions[resSel.value];
+      if (preset) setResSubtitle(preset.width, preset.height, preset.framerate, fps);
+    }
+  } catch(e) {
+    alert('Request failed: ' + e);
+  }
+  delete sel.dataset.busy;
+  sel.disabled = (_state === 'recording');
+}
+
+async function restartStream() {
+  const btn = document.getElementById('btnRefreshStream');
+  btn.dataset.busy = '1';
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = '↻ Restarting…';
+  try {
+    const r = await fetch('/stream/restart', { method: 'POST' });
+    if (!r.ok) {
+      const e = await r.json();
+      alert('Stream restart failed: ' + (e.detail || r.status));
+    }
+  } catch(e) {
+    alert('Request failed: ' + e);
+  }
+  btn.textContent = origText;
+  delete btn.dataset.busy;
+  btn.disabled = (_state === 'recording');
+}
+
+function setResSubtitle(width, height, framerate, streamFps) {
+  document.getElementById('resSubtitle').textContent =
+    `${width}×${height} @ ${framerate}fps capture · ${streamFps}fps stream`;
 }
 
 // ---------------------------------------------------------------------------

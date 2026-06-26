@@ -78,7 +78,7 @@ builder:
 	docker buildx use $(BUILDX_BUILDER)
 
 warm-cache:
-	docker pull --platform $(PLATFORMS) $(DOCKER_IMAGE):main || true
+	docker pull --platform $(PLATFORMS) $(DOCKER_IMAGE):$(IMAGE_TAG)|| true
 
 build: builder check-username warm-cache
 	docker buildx build \

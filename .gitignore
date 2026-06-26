@@ -2,3 +2,4 @@
 *.env
 .actrc
 SNAPSHOT.md
+/app/__pycache__

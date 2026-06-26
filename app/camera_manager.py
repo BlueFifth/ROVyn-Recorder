@@ -3,6 +3,7 @@ import io
 import logging
 import threading
 import time
+from fractions import Fraction
 from pathlib import Path
 from typing import Optional
 
@@ -33,7 +34,7 @@ class CameraPipeline:
                               dynamically off the tee with a pad offset +
                               block-EOS finalize so each clip is valid.
 
-    Notes from hard-won debugging:
+    Notes from debugging:
     - matroskamux (NOT avimux) — avimux produces header-only files when its
       branch is added to an already-running pipeline.
     - pad offset on the record tee pad — the branch joins a running pipeline,
@@ -70,16 +71,24 @@ class CameraPipeline:
         self._latest_jpeg: Optional[bytes] = None
         self._streaming = False
 
+    @staticmethod
+    def _framerate_fraction(value) -> str:
+        """GStreamer caps need an exact num/den fraction — required for
+        sub-1fps stream rates (e.g. 0.5 -> 1/2, 0.2 -> 1/5)."""
+        frac = Fraction(value).limit_denominator(1000)
+        return f"{frac.numerator}/{frac.denominator}"
+
     def _pipeline_str(self) -> str:
         caps = (
             f"video/x-raw,format=YUY2,"
-            f"width={self.width},height={self.height},framerate={self.capture_fps}/1"
+            f"width={self.width},height={self.height},"
+            f"framerate={self._framerate_fraction(self.capture_fps)}"
         )
         return (
             f"v4l2src device={self.device} ! {caps} ! tee name=t "
             # branch 1: stream (always on)
             f"t. ! queue leaky=downstream "
-            f"   ! videorate ! video/x-raw,framerate={self.stream_fps}/1 "
+            f"   ! videorate ! video/x-raw,framerate={self._framerate_fraction(self.stream_fps)} "
             f"   ! videoconvert ! video/x-raw,format=NV12 "
             f"   ! v4l2h264enc "
             f"   ! video/x-h264,level=(string)4,profile=(string)baseline "

@@ -16,7 +16,7 @@ from camera_manager import CameraManager
 from mavlink_watcher import watch_arm_state
 from rtsp_server import RTSPServer
 from session import SessionManager, State
-from storage import find_data_dir, free_space_gb, estimated_minutes_remaining, list_sessions
+from storage import find_data_dir, free_space_gb, estimated_minutes_remaining, list_sessions, bytes_per_second
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 log = logging.getLogger("main")
@@ -35,6 +35,22 @@ def save_config(cfg: dict):
         json.dump(cfg, f, indent=2)
 
 config = load_config()
+
+# ---------------------------------------------------------------------------
+# Supported capture resolution/framerate presets, and stream (encode) fps
+# options. These are independent: capture sets the v4l2 caps, stream fps
+# is a separate downstream `videorate` element, so the stream can be
+# encoded slower than the camera captures (e.g. 1-2fps to save bandwidth).
+# ---------------------------------------------------------------------------
+RESOLUTION_PRESETS = [
+    {"label": "1600x1200 @ 5fps",  "width": 1600, "height": 1200, "framerate": 5},
+    {"label": "1280x720 @ 5fps",   "width": 1280, "height": 720,  "framerate": 5},
+    {"label": "640x480 @ 5fps",    "width": 640,  "height": 480,  "framerate": 5},
+    {"label": "320x240 @ 15fps",   "width": 320,  "height": 240,  "framerate": 15},
+    {"label": "320x240 @ 30fps",   "width": 320,  "height": 240,  "framerate": 30},
+]
+
+STREAM_FPS_OPTIONS = [0.2, 0.5, 1, 2, 5, 10, 15, 30]
 
 # ---------------------------------------------------------------------------
 # Globals
@@ -157,6 +173,7 @@ def register_service():
 def status():
     free_gb = free_space_gb(data_dir) if data_dir else 0.0
     cam_status = camera_manager.status()
+    bps = bytes_per_second(config["width"], config["height"], config.get("framerate", 15))
     return {
         "state": session_manager.state.value,
         "session_id": session_manager.current.session_id if session_manager.current else None,
@@ -165,7 +182,7 @@ def status():
         "ssd_mounted": data_dir is not None,
         "ssd_path": str(data_dir) if data_dir else None,
         "ssd_free_gb": round(free_gb, 2),
-        "estimated_minutes_remaining": round(estimated_minutes_remaining(free_gb), 1),
+        "estimated_minutes_remaining": round(estimated_minutes_remaining(free_gb, bps), 1),
         "cameras": cam_status,
         "rtsp": {
             "cam0": f"rtsp://{config['pi_ip']}:{config['rtsp_port']}/cam0",
@@ -243,6 +260,91 @@ def update_config(new_config: dict):
     global config
     config.update(new_config)
     save_config(config)
+    return {"ok": True}
+
+
+def _restart_streaming():
+    """Stop/recreate both camera pipelines from the current `config`."""
+    camera_manager.stop_all()
+    camera_manager.detect_cameras()
+    camera_manager.start_streaming()
+
+
+@app.get("/resolutions")
+def get_resolutions():
+    return RESOLUTION_PRESETS
+
+
+@app.post("/resolution")
+def set_resolution(preset: dict):
+    global config
+
+    match = next(
+        (p for p in RESOLUTION_PRESETS
+         if p["width"] == preset.get("width")
+         and p["height"] == preset.get("height")
+         and p["framerate"] == preset.get("framerate")),
+        None,
+    )
+    if match is None:
+        raise HTTPException(400, "Unsupported resolution/fps combination")
+    if session_manager.state == State.RECORDING:
+        raise HTTPException(409, "Cannot change resolution while recording")
+
+    config["width"] = match["width"]
+    config["height"] = match["height"]
+    config["framerate"] = match["framerate"]
+    # Stream fps is independent of capture fps (separate `videorate` element
+    # downstream of the tee — recording taps the tee directly, unaffected),
+    # but it can't exceed what the camera is now capturing.
+    config["stream_fps"] = min(config.get("stream_fps", match["framerate"]), match["framerate"])
+    save_config(config)
+
+    # Pipelines are built from `config` at start_streaming() time, so a
+    # stop/start cycle is required to pick up the new caps — restarting in
+    # place also releases and reacquires the V4L2 device cleanly.
+    _restart_streaming()
+
+    return {"ok": True, **match, "stream_fps": config["stream_fps"]}
+
+
+@app.get("/stream-fps-options")
+def get_stream_fps_options():
+    return STREAM_FPS_OPTIONS
+
+
+@app.post("/stream-fps")
+def set_stream_fps(payload: dict):
+    global config
+
+    stream_fps = payload.get("stream_fps")
+    if stream_fps not in STREAM_FPS_OPTIONS:
+        raise HTTPException(400, "Unsupported stream fps")
+    if stream_fps > config["framerate"]:
+        raise HTTPException(400, "Stream fps cannot exceed the camera's capture fps")
+    if session_manager.state == State.RECORDING:
+        raise HTTPException(409, "Cannot change stream fps while recording")
+
+    # Recording always taps the tee at full capture fps (camera_manager.py
+    # CameraPipeline._pipeline_str, branch 2/3) — only the stream's
+    # `videorate` element downstream of the tee is affected here.
+    config["stream_fps"] = stream_fps
+    save_config(config)
+
+    _restart_streaming()
+
+    return {"ok": True, "stream_fps": stream_fps}
+
+
+@app.post("/stream/restart")
+def restart_stream():
+    """Tear down and rebuild both camera pipelines without changing any
+    settings — recovers a stuck/frozen GStreamer stream or V4L2 device."""
+    if session_manager.state == State.RECORDING:
+        raise HTTPException(409, "Cannot restart stream while recording")
+
+    _restart_streaming()
+
     return {"ok": True}
 
 

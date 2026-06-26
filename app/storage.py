@@ -3,9 +3,10 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-# Bytes per second for both cameras at 320x240 YUY2 @ 15fps
-# 320 * 240 * 2 bytes/pixel * 15fps * 2 cameras
-BYTES_PER_SECOND = 320 * 240 * 2 * 15 * 2
+
+def bytes_per_second(width: int, height: int, framerate: int, num_cameras: int = 2) -> int:
+    """Raw YUY2 capture is 2 bytes/pixel, written uncompressed per camera while recording."""
+    return width * height * 2 * framerate * num_cameras
 
 
 def _mount_ssd(device: str, mountpoint: Path) -> bool:
@@ -71,11 +72,11 @@ def free_space_gb(path: Path) -> float:
         return 0.0
 
 
-def estimated_minutes_remaining(free_gb: float) -> float:
-    """Estimate recording minutes remaining based on free space and stream config."""
-    if BYTES_PER_SECOND == 0:
+def estimated_minutes_remaining(free_gb: float, bps: int) -> float:
+    """Estimate recording minutes remaining based on free space and current capture settings."""
+    if bps == 0:
         return 0.0
-    return (free_gb * 1e9) / (BYTES_PER_SECOND * 60)
+    return (free_gb * 1e9) / (bps * 60)
 
 
 def list_sessions(data_dir: Path) -> list[dict]:

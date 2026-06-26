@@ -8,7 +8,7 @@
   "height": 240,
   "framerate": 15,
   "gst_format": "YUY2",
-  "stream_fps": 5,
+  "stream_fps": 1,
   "stream_bitrate": 1000,
   "stream_jpeg_quality": 60,
   "rtsp_port": 8555,
