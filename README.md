@@ -42,7 +42,6 @@ During any extension use, packets seem unreliable, and also seem to strain the m
 This experiment was half-baked but should serve as an estimate of what the Pi 4 is capable of.
 It's hoped that the bulk of the problems experienced were either compute or data bandwidth limitations, which will be resolved by the upgrade to a RPi 5.
 
-#todo link to extension
 
 >[!Note]
 >While baseline functionality is still being developed on the stereo cams, its important that they're calibrated to be able to measure things underwater. Please refer to Adrienne Winter's MSc for guidance on underwater camera calibration.
